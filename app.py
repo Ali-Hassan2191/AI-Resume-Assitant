@@ -17,7 +17,7 @@ st.set_page_config(
     layout="wide",
 )
 
-MODEL_NAME = "gemini-3.6-flash"
+MODEL_NAME = "gemini-3.5-flash"
 
 def get_api_key():
     """Read Gemini API key from Streamlit secrets or environment."""
