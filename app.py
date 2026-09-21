@@ -247,13 +247,13 @@ Return exactly this JSON structure:
   "ats_score": 0,
   "score_label": "Needs improvement",
   "score_explanation": "Short explanation of why the estimated score was given.",
-  "score_breakdown": {
+  "score_breakdown": {{
     "parseability": 0,
     "keyword_alignment": 0,
     "section_structure": 0,
     "skills_relevance": 0,
     "achievement_quality": 0
-  },
+  }},
   "summary": "2-4 sentence overall resume assessment.",
   "strengths": [
     "strength 1",
