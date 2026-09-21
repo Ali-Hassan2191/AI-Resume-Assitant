@@ -247,11 +247,23 @@ Return exactly this JSON structure:
   "ats_score": 0,
   "score_label": "Needs improvement",
   "score_explanation": "Short explanation of why the estimated score was given.",
+  "score_breakdown": {
+    "parseability": 0,
+    "keyword_alignment": 0,
+    "section_structure": 0,
+    "skills_relevance": 0,
+    "achievement_quality": 0
+  },
   "summary": "2-4 sentence overall resume assessment.",
   "strengths": [
     "strength 1",
     "strength 2",
     "strength 3"
+  ],
+  "ats_risks": [
+    "specific ATS risk 1",
+    "specific ATS risk 2",
+    "specific ATS risk 3"
   ],
   "critical_improvements": [
     {{
@@ -301,6 +313,17 @@ Scoring guidance:
 - 60-74: Moderate; several improvements recommended
 - 0-59: Significant ATS/readability improvements needed
 
+For score_breakdown, return an independent 0-100 score for each:
+- parseability: How reliably an ATS can extract and search the resume content.
+- keyword_alignment: How well the resume matches the target job description, or general ATS keywords when no job description is provided.
+- section_structure: Quality and clarity of standard resume sections and headings.
+- skills_relevance: Relevance and strength of the listed skills for the target role.
+- achievement_quality: Strength of experience/project bullets, action verbs, measurable results, and evidence of impact.
+
+Base every sub-score only on evidence in the resume and supplied job description.
+Make ats_score consistent with the five breakdown scores by using their rounded average.
+Return concise ATS risks that are specific to the uploaded resume.
+
 Return no Markdown fences and no text outside the JSON.
 """
 
@@ -328,13 +351,21 @@ def parse_json_response(raw):
     return data
 
 
+def _score_status(score):
+    if score >= 80:
+        return "Strong"
+    if score >= 60:
+        return "Fair"
+    return "Needs improvement"
+
+
 def display_results(result):
     score = result["ats_score"]
     label = result.get("score_label", "")
 
+    # Overall score header
     st.subheader("ATS Compatibility Score")
     st.progress(score / 100)
-
     col1, col2 = st.columns([1, 3])
     with col1:
         st.metric("Estimated ATS Score", f"{score}/100")
@@ -342,25 +373,61 @@ def display_results(result):
         st.write(f"**{label}**")
         st.write(result.get("score_explanation", ""))
 
+    # Score Breakdown — added to match the requested reference UI.
+    st.subheader("📊 Score Breakdown")
+    breakdown = result.get("score_breakdown", {})
+    score_items = [
+        ("Parseability", "parseability"),
+        ("Keyword Alignment", "keyword_alignment"),
+        ("Section Structure", "section_structure"),
+        ("Skills Relevance", "skills_relevance"),
+        ("Achievement Quality", "achievement_quality"),
+    ]
+
+    cols = st.columns(5)
+    for col, (title, key) in zip(cols, score_items):
+        try:
+            value = int(round(float(breakdown.get(key, 0))))
+        except (TypeError, ValueError):
+            value = 0
+        value = max(0, min(100, value))
+        with col:
+            st.metric(title, f"{value}/100")
+            st.caption(_score_status(value))
+
     st.subheader("Overall Assessment")
     st.write(result.get("summary", ""))
 
-    col1, col2 = st.columns(2)
-
-    with col1:
+    # Strengths + ATS Risks side by side — matching the reference image.
+    left, right = st.columns(2)
+    with left:
         st.subheader("✅ Strengths")
-        for item in result.get("strengths", []):
-            st.markdown(f"- {item}")
-
-    with col2:
-        st.subheader("⚠️ Critical Improvements")
-        for item in result.get("critical_improvements", []):
-            if isinstance(item, dict):
-                st.markdown(f"**{item.get('issue', 'Issue')}**")
-                st.write(item.get("why_it_matters", ""))
-                st.info(f"Fix: {item.get('fix', '')}")
-            else:
+        strengths = result.get("strengths", [])
+        if strengths:
+            for item in strengths:
                 st.markdown(f"- {item}")
+        else:
+            st.write("No strengths were returned.")
+
+    with right:
+        st.subheader("⚠️ ATS Risks")
+        risks = result.get("ats_risks")
+        if risks is None:
+            risks = result.get("formatting_risks", [])
+        if risks:
+            for risk in risks:
+                st.markdown(f"- {risk}")
+        else:
+            st.success("No major ATS risks were identified.")
+
+    st.subheader("🎯 Critical Improvements")
+    for item in result.get("critical_improvements", []):
+        if isinstance(item, dict):
+            st.markdown(f"**{item.get('issue', 'Issue')}**")
+            st.write(item.get("why_it_matters", ""))
+            st.info(f"Fix: {item.get('fix', '')}")
+        else:
+            st.markdown(f"- {item}")
 
     st.subheader("Section-by-Section Feedback")
     for item in result.get("section_feedback", []):
@@ -373,27 +440,16 @@ def display_results(result):
     st.subheader("🔎 Keyword Analysis")
     keywords = result.get("keywords", {})
     k1, k2 = st.columns(2)
-
     with k1:
         st.markdown("**Matched / present**")
         matched = keywords.get("matched", [])
         st.write(", ".join(matched) if matched else "No clear matches identified.")
-
     with k2:
         st.markdown("**Missing / weak**")
         missing = keywords.get("missing_or_weak", [])
         st.write(", ".join(missing) if missing else "No major missing keywords identified.")
-
     if keywords.get("notes"):
         st.caption(keywords["notes"])
-
-    st.subheader("🧩 Formatting Risks")
-    risks = result.get("formatting_risks", [])
-    if risks:
-        for risk in risks:
-            st.warning(risk)
-    else:
-        st.success("No major formatting risks were identified.")
 
     st.subheader("✍️ Suggested Bullet Improvements")
     rewrites = result.get("rewrites", [])
@@ -409,12 +465,11 @@ def display_results(result):
 
     st.subheader("Recommended Resume Structure")
     for item in result.get("recommended_resume_structure", []):
-        st.markdown(f"{item}")
+        st.markdown(f"- {item}")
 
     st.subheader("🚀 Next Steps")
     for index, item in enumerate(result.get("next_steps", []), start=1):
         st.markdown(f"{index}. {item}")
-
 
 st.title("📄 Resume ATS Analyzer")
 st.caption(
